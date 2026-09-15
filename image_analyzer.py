@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import math
 from typing import Any
 import requests
 
@@ -90,4 +91,18 @@ def analyze_image(image_url: str | None = None, image_bytes: bytes | None = None
         "visual_confidence": 0, "notes": []
     }
     defaults.update(result)
+    for name in ('visual_confidence', 'silver_likelihood', 'plated_likelihood',
+                 'weighted_likelihood', 'hollow_handle_likelihood', 'knife_or_steel_blade_likelihood'):
+        value = defaults[name]
+        defaults[name] = max(0, min(100, int(value))) if isinstance(value, (int, float)) and math.isfinite(value) else 0
+    if defaults['likely_purity'] not in (0.999, 0.958, 0.925, 0.900, 0.835, 0.830, 0.800):
+        defaults['likely_purity'] = None
+    for name in ('estimated_weight_low_g', 'estimated_weight_high_g'):
+        value = defaults[name]
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or not 2 <= value <= 50000:
+            defaults[name] = None
+    if defaults['estimated_weight_low_g'] and defaults['estimated_weight_high_g'] and defaults['estimated_weight_low_g'] > defaults['estimated_weight_high_g']:
+        defaults['estimated_weight_low_g'] = defaults['estimated_weight_high_g'] = None
+    for name in ('hallmark_text', 'piece_types', 'notes'):
+        defaults[name] = [str(v) for v in defaults[name]][:20] if isinstance(defaults[name], list) else []
     return defaults

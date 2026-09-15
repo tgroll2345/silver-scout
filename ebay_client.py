@@ -72,7 +72,14 @@ def normalize_item(item: dict) -> dict:
     shipping_options = item.get("shippingOptions") or []
     if shipping_options:
         shipping = float(shipping_options[0].get("shippingCost", {}).get("value", 0) or 0)
+    price_data = item.get('price') or {}
+    shipping_data = (shipping_options[0].get('shippingCost') or {}) if shipping_options else {}
+    eligible = (price_data.get('value') is not None and price_data.get('currency') == 'USD'
+                and shipping_data.get('value') is not None and shipping_data.get('currency') == 'USD')
     return {
+        "valuation_eligible": eligible,
+        "description_incomplete": True,
+        "currency": price_data.get('currency', 'Unknown'),
         "item_id": item.get("itemId"),
         "title": item.get("title", ""),
         "description": item.get("shortDescription", "") or "",

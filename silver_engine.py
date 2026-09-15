@@ -1,9 +1,24 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 import re
+import math
 from typing import Optional
 
 TROY_OZ_TO_GRAMS = 31.1034768
+
+
+PLATE_PATTERN = re.compile(r"\b(?:silver[\s-]*plat(?:e[ds]?|ing)|e\.?p\.?n\.?s\.?|nickel silver|german silver|quadruple plate)\b", re.I)
+
+
+def explicit_plate(text: str) -> bool:
+    return bool(PLATE_PATTERN.search(text))
+
+
+def term_found(term: str, text: str) -> bool:
+    suffix = r"(?!\w)"
+    if term.isdigit():
+        suffix += r"(?!\s*(?:grams?|g|oz|ounces?|ozt|troy|lbs?|pounds?)\b)"
+    return bool(re.search(r"(?<![\w.])" + re.escape(term) + suffix, text))
 
 PURITY_MAP = {
     "999": 0.999,
@@ -70,6 +85,11 @@ class Estimate:
     score: int
     reasons: list[str]
     risks: list[str]
+    silver_spot_used: float
+    tax_rate_used: float
+    realization_used: float
+    weight_source: str
+    discount_pct: Optional[float]
 
     def dict(self):
         return asdict(self)
@@ -79,10 +99,10 @@ def detect_purity(text: str) -> tuple[Optional[float], list[str]]:
     t = text.lower()
     hits = []
     # Negative metal descriptions override apparent numeric markings in text.
-    if any(term in t for term in ["silverplate", "silver plated", "silver-plated", "epns", "nickel silver", "german silver"]):
+    if explicit_plate(t):
         return None, hits
     for term, purity in PURITY_MAP.items():
-        if term in t:
+        if term_found(term, t):
             hits.append(term)
     if not hits:
         return None, []
@@ -104,11 +124,16 @@ def extract_weight_grams(text: str) -> tuple[Optional[float], str | None]:
         for m in re.finditer(pat, t):
             val = float(m.group(1)) * mult
             if 2 <= val <= 50000:
-                candidates.append((val, unit, m.group(0)))
+                context = t[max(0, m.start()-35):m.end()+25]
+                if not re.search(r"shipping weight|packaged weight|package weight|with (?:the )?(?:box|case)", context):
+                    candidates.append((val, unit, m.group(0)))
     if not candidates:
         return None, None
-    # Prefer the largest plausible gross lot weight mentioned.
-    val, unit, raw = max(candidates, key=lambda x: x[0])
+    # Multiple incompatible weights need human review, never choose the largest.
+    weights = [c[0] for c in candidates]
+    if max(weights) > min(weights) * 1.05:
+        return None, "Conflicting weights; verify net metal weight"
+    val, unit, raw = min(candidates, key=lambda x: x[0])
     return val, raw
 
 
@@ -137,14 +162,15 @@ def estimate_listing(
         plated_likelihood = int(image_evidence.get("plated_likelihood") or 0)
         silver_likelihood = int(image_evidence.get("silver_likelihood") or 0)
         image_purity = image_evidence.get("likely_purity")
-        explicit_plate = any(term in low for term in ["silverplate", "silver plated", "silver-plated", "epns", "nickel silver", "german silver"])
-        if purity is None and image_purity and visual_conf >= 70 and silver_likelihood >= 75 and plated_likelihood <= 20 and not explicit_plate:
-            purity = float(image_purity)
-            reasons.append(f"Photo suggests solid silver purity near {purity:.3f}")
-        if grams is None:
+        seller_plate = explicit_plate(low)
+        if purity is None and image_purity and visual_conf >= 70 and silver_likelihood >= 75 and plated_likelihood <= 20 and not seller_plate:
+            purity = float(image_purity) if float(image_purity) in PURITY_MAP.values() else None
+            if purity is not None:
+                reasons.append(f"Photo suggests solid silver purity near {purity:.3f}")
+        if grams is None and raw_weight is None:
             low_g = image_evidence.get("estimated_weight_low_g")
             high_g = image_evidence.get("estimated_weight_high_g")
-            if low_g and visual_conf >= 70:
+            if low_g and math.isfinite(float(low_g)) and 2 <= float(low_g) <= 50000 and visual_conf >= 70:
                 # Always use the low end for melt valuation.
                 grams = float(low_g)
                 raw_weight = f"photo-estimated conservative low end {float(low_g):.0f} g"
@@ -157,21 +183,23 @@ def estimate_listing(
     confidence = 15
 
     for term, pts in POSITIVE_TERMS.items():
-        if term in low:
+        if term_found(term, low):
             confidence += min(pts, 25)
             if term in {"sterling", "925", "900", "835", "830", "800", "coin silver"}:
                 reasons.append(f"Metal mark/term detected: {term}")
 
-    negative_penalty = 0
+    negative_penalty = 70 if explicit_plate(low) else 0
+    if explicit_plate(low):
+        risks.append("Explicit silverplate/EPNS/base-metal text overrides visual sterling evidence")
     for term, pts in NEGATIVE_TERMS.items():
-        if term in low:
+        if term_found(term, low):
             negative_penalty += pts
             risks.append(f"Likely non-solid silver indicator: {term}")
 
     risk_penalty = 0
     recoverable_fraction = 1.0
     for term, pts in RISK_TERMS.items():
-        if term in low:
+        if term_found(term, low):
             risk_penalty += pts
             risks.append(f"Weight/content risk: {term}")
             if term in {"weighted", "cement filled", "filled"}:
@@ -185,7 +213,7 @@ def estimate_listing(
         confidence += 25
         reasons.append(f"Weight detected: {raw_weight}")
     else:
-        risks.append("No reliable weight found in listing text")
+        risks.append(raw_weight or "No reliable weight found in listing text")
 
     if purity is not None:
         confidence += 20
@@ -204,12 +232,15 @@ def estimate_listing(
         if weighted_likelihood >= 60:
             recoverable_fraction = min(recoverable_fraction, 0.25)
             risk_penalty += 25
+            risks.append("Photo suggests weighted construction; recovery limited to 25%")
         if hollow_likelihood >= 60:
             recoverable_fraction = min(recoverable_fraction, 0.35)
             risk_penalty += 20
+            risks.append("Photo suggests hollow handles; recovery limited to 35%")
         if knife_likelihood >= 60:
             recoverable_fraction = min(recoverable_fraction, 0.35)
             risk_penalty += 15
+            risks.append("Photo suggests knives/steel blades; recovery limited to 35%")
 
     confidence = max(0, min(100, confidence - negative_penalty - risk_penalty // 2))
 
@@ -252,4 +283,9 @@ def estimate_listing(
         score=score,
         reasons=reasons,
         risks=risks,
+        silver_spot_used=silver_spot_per_troy_oz,
+        tax_rate_used=tax_rate,
+        realization_used=refining_discount,
+        weight_source=raw_weight or "Unknown",
+        discount_pct=round((1 - total_cost / conservative) * 100, 1) if conservative and conservative > 0 else None,
     )

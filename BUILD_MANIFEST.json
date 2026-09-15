@@ -1,0 +1,22 @@
+{
+  "version": "2.2",
+  "source_archive": "silver_scout_v2_1 (1).zip",
+  "source_sha256": "49d8805bcf36dbc75c66d2c3bb78e5ce154c511fc62a4c9f981328c6406b672a",
+  "files": {
+    "app.py": "33f67f75509cf28d9352930f04195419eec0e3d00e385698dd36885c0a9eb96a",
+    "ai_budget.py": "a2819197fee10710824bf909c1b37da508bde461cb58acc769e69c13668d5642",
+    "scanner.py": "8cdb253a51b50e6ccd89bb23d86bc65c4e8a2ceaf7761c00423ce01313ba609d",
+    "silver_engine.py": "c521a0d46cdfe1b5ea2a9fa58bd9c69ebea30550f34f99be217558f81f8842f9",
+    "ebay_client.py": "a372a387530cae076c52bcd3bfa57a7605f54df4617dc3e32cb7f737cd572650",
+    "image_analyzer.py": "d8d5078456ec358cb8aeace2a42c9cf3f2ebb2135d9fc4438bfbc24bf6d3cdb0",
+    "spot_price.py": "bf34e09edfa6b8d70f44af4ef8501bb53183cdefd94e081448c29e2499827329",
+    "results_ui.py": "abd7ab1c17f804cf22d9541448b255cb1eb80d362dee38276c58af78c041ba45",
+    "requirements.txt": "07b5c79c5cb2a6fcb013d1addce0b7bff1ef58679bebefceac3625d3cc16a1d6",
+    "README.md": "3220e7820218949cd69f829acbdc45fa29d1ea41f521ce964165c8fb08289405",
+    ".gitignore": "dec8c246e9676ed383cae7ecad1ec0112b9af02ffde300411c1cc4640af2a667",
+    "test_v22.py": "f65f40bae09ad01755f11c66b33af59db8586d60c4777b8e3fab09f175d5e99f",
+    ".env.example": "52374c6cab7a0269c6633a2943f5419ca0cb2153b002bfdc1b7ca74f74498edd",
+    ".streamlit/secrets.example.toml": "d649bfa480d1544fdb37e9c25896cb1ac40f97216b6ed22edb7edc26bfa8a2f4"
+  },
+  "tests": "21 passed; mocked providers; Python 3.12 / Streamlit 1.63.0"
+}
