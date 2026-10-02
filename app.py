@@ -26,20 +26,23 @@ from image_analyzer import analyze_image, configured as vision_configured
 from ai_budget import reserve, BudgetBlocked
 from results_ui import table_data, explain
 
-st.set_page_config(page_title='Silver Scout V2.2.2', page_icon='🥈', layout='wide')
-st.title('🥈 Silver Scout V2.2.2')
-st.caption('Version 2.2.2 · Compare the cost. Check the silver evidence. Understand the deal.')
+st.set_page_config(page_title='Silver Scout V2.2.3', page_icon='🥈', layout='wide')
+st.title('🥈 Silver Scout V2.2.3')
+st.caption('Version 2.2.3 · Compare the cost. Check the silver evidence. Understand the deal.')
 
 @st.cache_data(ttl=900, max_entries=2)
 def live_spot_value():
-    return get_silver_spot_from_metals_dev()
+    price = get_silver_spot_from_metals_dev()
+    return price, datetime.now(timezone.utc).isoformat()
 
-live_spot = live_spot_value()
-default_spot = live_spot or float(os.getenv('SILVER_SPOT', '50'))
+live_spot, spot_checked_at = live_spot_value()
 with st.sidebar:
     st.header('Deal assumptions')
-    spot = st.number_input('Silver spot ($/troy oz)', min_value=1.0, value=float(default_spot), step=0.25, key='spot')
-    st.caption('Live provider value (cached up to 15 minutes).' if live_spot else 'Manual spot assumption — verify and update before scanning.')
+    if live_spot is not None:
+        st.metric('Silver spot ($/troy oz)', f'${live_spot:.2f}')
+        st.caption(f'Metals.Dev · Checked {spot_checked_at} · Cached up to 15 minutes.')
+    else:
+        st.warning('Automatic silver price unavailable. Add or check METALS_DEV_API_KEY in Streamlit Secrets. Scans and calculations require a current quote.')
     tax_rate = st.number_input('Estimated sales tax %', min_value=0.0, max_value=15.0, value=0.0, step=0.1) / 100
     refining = st.slider('Realization after refining/selling', 0.70, 1.00, 0.92, 0.01)
     min_profit = st.number_input('Minimum profit alert ($)', min_value=0.0, value=float(os.getenv('MIN_PROFIT_USD', '75')), step=10.0)
@@ -74,6 +77,10 @@ with tab1:
         st.session_state.update(scan_id=scan_id, rows=[], vision_stats={}, scan_complete=False)
         try:
             with st.spinner('Scanning and ranking listings…'):
+                spot, checked_at = live_spot_value()
+                if spot is None:
+                    live_spot_value.clear()
+                    raise ValueError('Silver price unavailable. Check METALS_DEV_API_KEY and try again; no fixed price was used.')
                 if client.configured:
                     phrases = [q.strip() for q in queries.splitlines() if q.strip()]
                     if not phrases:
@@ -86,6 +93,9 @@ with tab1:
                         apply_estimate(row, spot, tax_rate, refining)
                         row.update(hidden_sterling_score=0, image_evidence=None)
                     rows.sort(key=rank_key, reverse=True)
+                for row in rows:
+                    row['spot_source'] = 'Metals.Dev'
+                    row['spot_checked_at'] = checked_at
                 stats = next((r['_vision_stats'] for r in rows if '_vision_stats' in r), {})
                 st.session_state.update(rows=rows, vision_stats=stats, scan_complete=True)
         except Exception as exc:
@@ -178,7 +188,14 @@ with tab3:
     price = st.number_input('Price ($)', min_value=0.0, value=120.0)
     shipping = st.number_input('Shipping ($)', min_value=0.0, value=12.0)
     if st.button('Calculate value', key='calculate'):
-        st.json(estimate_listing(title, desc, price, shipping, spot, tax_rate, refining).dict())
+        spot, checked_at = live_spot_value()
+        if spot is None:
+            live_spot_value.clear()
+            st.error('Silver price unavailable. Check METALS_DEV_API_KEY and try again; no fixed price was used.')
+        else:
+            result = estimate_listing(title, desc, price, shipping, spot, tax_rate, refining).dict()
+            result.update(spot_source='Metals.Dev', spot_checked_at=checked_at)
+            st.json(result)
 
 with tab4:
     st.markdown('''
