@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import math
 import requests
 
 
@@ -16,7 +17,11 @@ def get_silver_spot_from_metals_dev(api_key: str | None = None) -> float | None:
         metals = data.get("metals", {})
         for k in ("silver", "XAG", "xag"):
             if k in metals:
-                return float(metals[k])
+                raw = metals[k]
+                if isinstance(raw, bool):
+                    return None
+                price = float(raw)
+                return price if math.isfinite(price) and price > 0 else None
     except Exception:
         return None
     return None
