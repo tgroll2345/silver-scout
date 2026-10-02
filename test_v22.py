@@ -37,6 +37,20 @@ class ValuationTests(unittest.TestCase):
                 self.assertIsNone(e.est_profit)
                 self.assertFalse(scanner.is_alert(e.dict()))
 
+    def test_mixed_purity_uses_lower_fineness(self):
+        e = estimate_listing('925 sterling and 800 silver mixed lot 420 grams', '', 25, 5, 50)
+        self.assertEqual(e.purity, .8)
+        self.assertTrue(any('Multiple purity' in r for r in e.risks))
+
+    def test_assumed_recovery_and_photo_weight_remain_watch(self):
+        e = estimate_listing('Sterling handle knives 420 grams', '', 5, 0, 50)
+        self.assertGreater(e.est_profit, 75)
+        self.assertFalse(scanner.is_alert(e.dict()))
+        e = estimate_listing('Sterling spoons', '', 5, 0, 50,
+                             image_evidence=EVIDENCE | {'estimated_weight_low_g':420})
+        self.assertGreater(e.est_profit, 75)
+        self.assertFalse(scanner.is_alert(e.dict()))
+
     def test_value_formula(self):
         e = estimate_listing('sterling spoons 420 grams', '', 180, 12, 50, .06, .92)
         self.assertEqual(e.total_cost, 203.52)
@@ -209,6 +223,23 @@ class AppTests(IsolatedBudget):
         self.assertTrue(any('silverplate' in w.value for w in at.warning))
         at.button(key='calculate').click().run()
         self.assertFalse(at.exception)
+
+    @patch.dict(os.environ, {'EBAY_CLIENT_ID':'','EBAY_CLIENT_SECRET':'','OPENAI_API_KEY':'','METALS_DEV_API_KEY':''})
+    def test_filters_and_journal(self):
+        from streamlit.testing.v1 import AppTest
+        at = AppTest.from_file(str(Path(__file__).resolve().with_name('app.py')), default_timeout=20).run()
+        at.button(key='scan').click().run()
+        next(b for b in at.button if b.label == 'Save to deal journal').click().run()
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.session_state['journal']), 1)
+        at.selectbox(key='inspect').select('demo3').run()
+        next(b for b in at.button if b.label == 'Save to deal journal').click().run()
+        self.assertFalse(at.exception)
+        at.checkbox[0].check().run()
+        self.assertTrue(all(v == '🔥 ALERT' for v in at.table[0].value['Deal']))
+        next(n for n in at.number_input if n.label.startswith('Maximum delivered')).set_value(1).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any('No matching' in i.value for i in at.info))
 
     @patch.dict(os.environ, {'EBAY_CLIENT_ID':'','EBAY_CLIENT_SECRET':'','OPENAI_API_KEY':'test-only','METALS_DEV_API_KEY':''})
     @patch('scanner.analyze_image', return_value=EVIDENCE)

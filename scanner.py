@@ -13,6 +13,8 @@ DEFAULT_QUERIES = ['sterling silver flatware lot', 'old silver spoons estate', '
 def is_alert(row, min_profit=75, min_margin=35):
     return (not explicit_plate(row.get('title', '') + ' ' + row.get('description', ''))
             and row.get('valuation_eligible', True)
+            and row.get('recoverable_fraction', 1.0) == 1.0
+            and not str(row.get('weight_source', '')).startswith('photo-estimated')
             and row.get('est_profit') is not None and row.get('margin_pct') is not None
             and row['est_profit'] >= min_profit and row['margin_pct'] >= min_margin)
 

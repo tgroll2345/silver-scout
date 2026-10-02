@@ -1,4 +1,4 @@
-# Silver Scout V2.2
+# Silver Scout V2.2.2
 
 An update of the recovered `silver_scout_v2_1 (1).zip` project. The application entry point is still **app.py**. Production eBay OAuth/Browse scanning, the OpenAI Responses photo-analysis request, Demo mode, Photo Lab and the single-item calculator are retained.
 
@@ -9,7 +9,7 @@ An update of the recovered `silver_scout_v2_1 (1).zip` project. The application 
 3. Upload **the extracted files and folders**, including the updated `requirements.txt`, to the same repository folder that currently contains `app.py`. Do not upload the ZIP itself or place the files inside another `silver_scout_v2_2` folder. The ZIP has app.py at its root to make this easier.
 4. Commit the update. Keep your current Streamlit app linked to the same repository and branch, with main file path **app.py**. Do not create a replacement app.
 5. Keep your existing Streamlit Secrets. No new eBay or OpenAI keys are required. Wait for Streamlit to install requirements and reload, or reboot from its management menu if necessary.
-6. Confirm the page says **Silver Scout V2.2**. Leave automatic Image AI **OFF**, enter/verify the current silver spot, and run a small live search. Check an eBay title link and the deal explanation.
+6. Confirm the page says **Silver Scout V2.2.2**. Leave automatic Image AI **OFF**, enter/verify the current silver spot, and run a small live search. Check an eBay title link and the deal explanation.
 7. To test paid photos, set nonzero caps and choose **1** promising deal. Click **Analyze photos for top deals**. Verify the request count, spend estimate and evidence. Automatic Image AI can remain OFF.
 
 Keep `.env`, `.streamlit/secrets.toml`, `.ai_usage.sqlite3` and `.vision_usage.json` out of GitHub. The package includes safe example files only. `.gitignore` cannot remove secrets already committed.
@@ -83,6 +83,13 @@ Without eBay credentials, **Demo mode** remains available. Demo listings have no
 py test_v22.py
 ```
 
-21 automated tests passed on Python 3.12 / Streamlit 1.63.0. Tests exercise valuation math; plate text overriding vision; conflicting weights; numeric weights not mistaken for purity; visual construction warnings; unknown shipping; escaped eBay links; zero and exact budget boundaries; per-scan, daily and monthly caps; simultaneous reservations; corrupt ledgers; legacy usage import; failure accounting; automatic/manual sharing; duplicate-click prevention; eBay/OpenAI request contracts; and Streamlit demo/calculator/manual-OFF reruns.
+24 automated tests passed on Python 3.12 / Streamlit 1.63.0. Tests exercise valuation math; plate text overriding vision; conflicting weights; numeric weights not mistaken for purity; visual construction warnings; unknown shipping; escaped eBay links; zero and exact budget boundaries; per-scan, daily and monthly caps; simultaneous reservations; corrupt ledgers; legacy usage import; failure accounting; automatic/manual sharing; duplicate-click prevention; eBay/OpenAI request contracts; and Streamlit demo/calculator/manual-OFF reruns.
 
-eBay and OpenAI responses were simulated. The build did not use your credentials, incur paid photo calls, update GitHub or deploy your Streamlit app. Follow the small live smoke test above after uploading. Full browser layout/phone rendering was not exercised by the headless UI tests.
+eBay and OpenAI responses were simulated. The build did not use your credentials, incur paid photo calls, make live eBay or OpenAI requests. Follow the small live smoke test above after uploading. Full browser layout/phone rendering was not exercised by the headless UI tests.
+
+
+## Tested improvements (September 30, 2026)
+
+Mixed-purity descriptions use the lowest detected fineness. Composite construction and photo-estimated weights stay on WATCH, even when assumed profit is high. Scanner filters now support alerts, confidence and delivered-cost limits. The Deal journal tracks flagged/bought/sold/passed listings and actual outcomes; CSV downloads back up the browser-session journal. No permanent account storage or background notification service is implied. ROI is profit divided by total purchase cost; the historical `margin_pct` field retains this formula.
+
+Credential examples and ignore rules are included. No production credentials are committed. Automated tests simulate providers; live eBay and OpenAI calls still require the existing deployment credentials. Broader resale valuations and real-estate sourcing remain future modules requiring verified comparable-sales/listing data.

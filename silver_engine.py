@@ -106,8 +106,8 @@ def detect_purity(text: str) -> tuple[Optional[float], list[str]]:
             hits.append(term)
     if not hits:
         return None, []
-    # Highest legitimate fineness mention wins for MVP; photo validation comes later.
-    best = max((PURITY_MAP[h], h) for h in hits)
+    # Use the lowest mentioned fineness for mixed or conflicting purity evidence.
+    best = min((PURITY_MAP[h], h) for h in hits)
     return best[0], hits
 
 
@@ -155,6 +155,8 @@ def estimate_listing(
     grams, raw_weight = extract_weight_grams(text)
 
     reasons, risks = [], []
+    if len({PURITY_MAP[h] for h in purity_hits}) > 1:
+        risks.append("Multiple purity terms: lowest fineness used; verify each piece before buying")
 
     # Optional photo evidence is deliberately conservative. Explicit plate terms in seller text override image guesses.
     if image_evidence:

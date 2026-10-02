@@ -37,7 +37,7 @@ def table_data(rows, min_profit, min_margin):
         'All-in¹': money(r['total_cost']) if r.get('valuation_eligible', True) else 'Unverified',
         'Metal value²': money(r['conservative_value']),
         'Profit': money(r['est_profit']),
-        'Margin': percent(r['margin_pct']),
+        'ROI': percent(r['margin_pct']),
         'Discount': percent(r.get('discount_pct')),
         'Hidden Sterling': f"{r.get('hidden_sterling_score', 0)}/100" if r.get('image_evidence') and 'error' not in r['image_evidence'] else '—',
         'Confidence': f"{r['confidence']}/100",
@@ -66,7 +66,7 @@ def explain(row, min_profit, min_margin):
         if alert:
             st.write(f"Projected profit meets ${min_profit:,.2f}; margin meets {min_margin:.1f}%.")
         else:
-            st.write('Profit/margin thresholds are not both met, or valuation inputs are unverified.')
+            st.write('Profit/margin thresholds are not both met, valuation inputs are unverified, or construction/photo weight assumptions require review.')
         for reason in row['reasons']:
             st.text('✓ ' + reason)
         for warning in row['risks']:

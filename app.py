@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from uuid import uuid4
 import streamlit as st
+import pandas as pd
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).with_name('.env'))
@@ -24,9 +26,9 @@ from image_analyzer import analyze_image, configured as vision_configured
 from ai_budget import reserve, BudgetBlocked
 from results_ui import table_data, explain
 
-st.set_page_config(page_title='Silver Scout V2.2', page_icon='🥈', layout='wide')
-st.title('🥈 Silver Scout V2.2')
-st.caption('Compare the cost. Check the silver evidence. Understand the deal.')
+st.set_page_config(page_title='Silver Scout V2.2.2', page_icon='🥈', layout='wide')
+st.title('🥈 Silver Scout V2.2.2')
+st.caption('Version 2.2.2 · Compare the cost. Check the silver evidence. Understand the deal.')
 
 @st.cache_data(ttl=900, max_entries=2)
 def live_spot_value():
@@ -62,7 +64,7 @@ DEMO = [
     {'item_id':'demo3','title':'6 Gorham sterling teaspoons 225g estate find','description':'Each spoon marked Gorham Sterling. Combined weight 225 g.','price':145,'shipping':9,'url':'','image':''},
     {'item_id':'demo4','title':'Old silver spoons from estate - untested','description':'Found in estate drawer. Please see photos for markings.','price':55,'shipping':8,'url':'','image':''},
 ]
-tab1, tab2, tab3, tab4 = st.tabs(['Scanner', 'Photo lab', 'Single-item calculator', 'Scoring'])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(['Scanner', 'Photo lab', 'Single-item calculator', 'Scoring', 'Deal journal'])
 with tab1:
     with st.expander('Search settings', expanded=not bool(st.session_state.get('rows'))):
         queries = st.text_area('Search phrases (one per line)', 'sterling silver flatware lot\nold silverware estate\nvintage silver utensils\nantique spoons lot\nestate flatware\nold serving spoons\ncoin silver spoons\n800 silver flatware', height=150)
@@ -126,13 +128,29 @@ with tab1:
             ordered = sorted(rows, key=lambda r: r['confidence'], reverse=True)
         else:
             ordered = sorted(rows, key=lambda r: r.get('hidden_sterling_score', 0), reverse=True)
-        page = st.selectbox('Results page', list(range(1, (len(rows)-1)//15 + 2)), key='page')
+        alert_only = st.checkbox('Show alerts only')
+        confidence_floor = st.slider('Minimum confidence', 0, 100, 0)
+        max_cost = st.number_input('Maximum delivered cost ($; 0 means no limit)', min_value=0.0, value=0.0)
+        ordered = [r for r in ordered if (not alert_only or is_alert(r, min_profit, min_margin))
+                   and r['confidence'] >= confidence_floor
+                   and (not max_cost or (r.get('valuation_eligible', True) and r['total_cost'] <= max_cost))]
+        st.caption(f'{len(ordered)} listings match your filters.')
+        if not ordered:
+            st.info('No matching listings. Widen the filters.')
+        page = st.selectbox('Results page', list(range(1, max(1, (len(ordered)-1)//15 + 1) + 1)), key='page')
         st.table(table_data(ordered[(page-1)*15:page*15], min_profit, min_margin), hide_index=True)
         st.caption('¹ Price + shipping + estimated tax, USD. ² After construction and realization adjustments. Margin = profit ÷ cost; discount = 1 − cost ÷ value. “—” Hidden Sterling means no successful photo analysis. Confidence is a heuristic score, not a probability.')
         st.caption('Scan valuations retain their original spot, tax and realization assumptions. Run a new scan to apply changed assumptions. Alerts use your current profit/margin thresholds.')
         by_id = {r['item_id']: r for r in ordered}
         selected_id = st.selectbox('Inspect candidate', list(by_id), format_func=lambda k: by_id[k]['title'], key='inspect')
-        explain(by_id[selected_id], min_profit, min_margin)
+        if selected_id:
+            explain(by_id[selected_id], min_profit, min_margin)
+            if st.button('Save to deal journal'):
+                saved = dict(by_id[selected_id])
+                saved.update(status='Flagged', actual_purchase=None, actual_proceeds=None, notes='',
+                             saved_at=datetime.now(timezone.utc).isoformat())
+                st.session_state.setdefault('journal', {})[selected_id] = saved
+                st.success('Saved. Open Deal journal to track the outcome.')
 
 with tab2:
     st.subheader('Photo lab')
@@ -165,13 +183,47 @@ with tab3:
 with tab4:
     st.markdown('''
 ### How to read a deal
-- **🔥 ALERT** meets your profit and margin thresholds with available valuation inputs. **WATCH** needs more evidence or does not meet both thresholds.
+- **🔥 ALERT** meets your profit and ROI thresholds with available valuation inputs, full recovery, and a text-derived weight. **WATCH** needs more evidence or does not meet both thresholds.
 - **Hidden Sterling** is a photo-derived screening score. It appears as **—** until a photo is successfully analyzed; it is not the probability that the item is sterling.
 - Explicit **silverplate / silver plated / silver-plated / silver plate / EPNS** text excludes solid-silver valuation even if a photo suggests sterling.
 - Weight, purity, construction recovery and realization assumptions are shown in each deal explanation. Conflicting weights remain unknown.
-- Knives, weighted pieces and hollow handles carry construction warnings and reduced recovery assumptions. Actual recoverable silver can be lower.
+- Knives, weighted pieces and hollow handles carry construction warnings and reduced recovery assumptions. These and photo-estimated weights stay on WATCH even when estimated profit meets thresholds. Actual recoverable silver can be lower.
 - Live search returns a seller summary, which may omit details. Read the full listing and verify weight, construction, shipping and taxes before buying.
 - **OFF** makes no automatic paid calls; **SELECTIVE** checks promising or ambiguous results; **AGGRESSIVE** checks a broader set. The top-deals button works in all modes.
 - Every photo request reserves estimated spend first, including failed requests. Automatic and manual requests share the scan limits and daily/monthly caps. A zero-dollar cap stops calls.
 - Budgets cap local estimates, not provider invoices. UTC day/month counters persist on this app instance's disk; ephemeral hosting or a redeployment can reset them. Use persistent AI_USAGE_DB storage for continuity.
 ''')
+
+with tab5:
+    st.subheader('Deal journal')
+    st.caption('Private to this browser session. Download a backup before leaving; this journal is not stored in a permanent account.')
+    journal = st.session_state.setdefault('journal', {})
+    if not journal:
+        st.info('Inspect a scanner result and select Save to deal journal.')
+    else:
+        jid = st.selectbox('Saved deal', list(journal), format_func=lambda k: journal[k]['title'])
+        deal = journal[jid]
+        with st.form('journal_edit'):
+            status = st.selectbox('Status', ['Flagged', 'Bought', 'Sold', 'Passed'],
+                                 index=['Flagged', 'Bought', 'Sold', 'Passed'].index(deal['status']))
+            purchase = st.number_input('Actual total purchase cost ($)', min_value=0.0,
+                                       value=float(deal['actual_purchase'] or 0))
+            proceeds = st.number_input('Actual net proceeds after fees ($)', min_value=0.0,
+                                       value=float(deal['actual_proceeds'] or 0))
+            notes = st.text_area('Notes', deal['notes'])
+            if st.form_submit_button('Update deal'):
+                deal.update(status=status, actual_purchase=purchase, actual_proceeds=proceeds, notes=notes)
+        if deal['status'] == 'Sold' and deal['actual_purchase'] is not None and deal['actual_proceeds'] is not None:
+            st.metric('Actual profit', f"${deal['actual_proceeds'] - deal['actual_purchase']:,.2f}")
+        columns = ['item_id', 'title', 'url', 'status', 'total_cost', 'est_profit',
+                   'actual_purchase', 'actual_proceeds', 'notes', 'saved_at']
+        records = [{k: row.get(k) for k in columns} for row in journal.values()]
+        # Neutralize formula-leading seller text in spreadsheet exports.
+        for record in records:
+            for key, value in record.items():
+                if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')):
+                    record[key] = "'" + value
+        data = pd.DataFrame(records)
+        st.dataframe(data, hide_index=True)
+        st.download_button('Download journal CSV', data.to_csv(index=False).encode('utf-8'),
+                           'silver-scout-journal.csv', 'text/csv')
